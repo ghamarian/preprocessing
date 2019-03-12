@@ -6,7 +6,7 @@ from PIL import Image, ImagePalette
 import argparse
 import pdb
 
-
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Normalize, Compose
 import torch
@@ -114,10 +114,11 @@ def train(epoch):
     for iteration, batch in enumerate(training_data_loader, 1):
         batch = [b.to(device) for b in batch]
         input, target1, target2 = batch
+        input = Variable(input, requires_grad=True)
 
         optimizer.zero_grad()
 
-        y_pred = torch.sigmoid(model(input)).data
+        y_pred = torch.sigmoid(model(input))
         loss = criterion(target1, target2, y_pred)
         epoch_loss += loss.item()
         loss.backward()
