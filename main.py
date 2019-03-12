@@ -114,7 +114,7 @@ def train(epoch):
     for iteration, batch in enumerate(training_data_loader, 1):
         batch = [b.to(device) for b in batch]
         input, target1, target2 = batch
-        input = Variable(input, requires_grad=True)
+        # input = Variable(input, requires_grad=True)
 
         optimizer.zero_grad()
 
@@ -154,46 +154,10 @@ train_set = data_gen.get_training_set()
 test_set = data_gen.get_test_set()
 
 training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
-# testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
+testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
 
 for epoch in range(1, opt.nEpochs + 1):
     train(epoch)
     runtest()
     checkpoint(epoch)
 
-# %%
-img_transform = Compose([
-    ToTensor(),
-    # Normalize(mean=[0.485, 0.456, 0.406, 0, 0, 0, 0, 0, 0, 0, 0], std=[0.229, 0.224, 0.225, 1, 1, 1, 1, 1, 1, 1, 1])
-])
-
-# %%
-prediction = torch.sigmoid(model(input_img)).data[0].cpu().numpy()
-
-# %%
-# First predicted layer - mask
-# Second predicted layer - touching areas
-prediction.shape
-
-# %%
-# left mask, right touching areas
-imshow(np.hstack([prediction[0], prediction[1]]))
-
-# %%
-mask = (prediction[0] > 0.5).astype(np.uint8)
-contour = (prediction[1])
-
-seed = ((mask * (1 - contour)) > 0.5).astype(np.uint8)
-
-# %%
-labels = label_watershed(mask, seed)
-
-# %%
-labels = unpad(labels, pads)
-
-# %%
-im = Image.fromarray(labels.astype(np.uint8), mode='P')
-im.putpalette(NUCLEI_PALETTE)
-
-# %%
-im
