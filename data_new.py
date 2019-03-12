@@ -1,75 +1,59 @@
-from os.path import exists, join, basename
-from os import makedirs, remove
-from six.moves import urllib
-import tarfile
-from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize
+from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize, Normalize
 
 from dataset import DatasetFromFolder
-
-ROOT_DIR = "./data"
-
-
-def download_bsd300(dest="dataset"):
-    output_image_dir = join(dest, "BSDS300/images")
-
-    if not exists(output_image_dir):
-        makedirs(dest)
-        url = "http://www2.eecs.berkeley.edu/Research/Projects/CS/vision/bsds/BSDS300-images.tgz"
-        print("downloading url ", url)
-
-        data = urllib.request.urlopen(url)
-
-        file_path = join(dest, basename(url))
-        with open(file_path, 'wb') as f:
-            f.write(data.read())
-
-        print("Extracting data")
-        with tarfile.open(file_path) as tar:
-            for item in tar:
-                tar.extract(item, dest)
-
-        remove(file_path)
-
-    return output_image_dir
 
 
 class DatasetFactory:
     DatasetMap = {'file': DatasetFromFolder}
 
-    def __init__(self, upscale_factor, crop_size, which_type='file'):
+    def __init__(self, upscale_factor, crop_size, root_dir, which_type='file'):
         self.crop_size = crop_size
         self.upscale_factor = upscale_factor
         self.datasetFactory = self.DatasetMap[which_type]
+        self.root_dir = root_dir
 
     def calculate_valid_crop_size(self):
         return self.crop_size - (self.crop_size % self.upscale_factor)
 
     def input_transform(self, crop_size):
         return Compose([
-            CenterCrop(crop_size),
-            Resize(crop_size // self.upscale_factor),
+            # CenterCrop(crop_size),
+            # Resize(crop_size // self.upscale_factor),
+            # Normalize(),
             ToTensor(),
         ])
 
     def target_transform(self, crop_size):
         return Compose([
-            CenterCrop(crop_size),
+            # CenterCrop(crop_size),
+            # Normalize(),
             ToTensor(),
         ])
 
     def get_training_set(self):
         # root_dir = download_bsd300()
-        root_dir = ROOT_DIR
-        train_dir = join(root_dir, "train")
+        # train_dir = join(self.root_dir, "train")
+        train_dir = self.root_dir
         crop_size = self.calculate_valid_crop_size()
 
         return self.datasetFactory(train_dir,
                                    input_transform=self.input_transform(crop_size),
                                    target_transform=self.target_transform(crop_size))
 
+    def get_validation_set(self):
+        # root_dir = download_bsd300()
+        # validation_dir = join(self.root_dir, "valid")
+        validation_dir = self.root_dir
+        crop_size = self.calculate_valid_crop_size()
+
+        return self.datasetFactory(validation_dir,
+                                   input_transform=self.input_transform(crop_size),
+                                   target_transform=self.target_transform(crop_size))
+
     def get_test_set(self):
-        root_dir = download_bsd300()
-        test_dir = join(root_dir, "test")
+        # root_dir = download_bsd300()
+        # test_dir = join(self.root_dir, "test")
+        test_dir = self.root_dir
         crop_size = self.calculate_valid_crop_size()
 
         return self.datasetFactory(test_dir,

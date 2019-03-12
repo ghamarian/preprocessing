@@ -1,15 +1,40 @@
-from __future__ import print_function
+# %%
+from pylab import *
+from skimage.morphology import watershed
+import scipy.ndimage as ndimage
+from PIL import Image, ImagePalette
 import argparse
-from math import log10
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-from model import Net
-# from data import get_training_set, get_test_set
-from data_new import DatasetFactory
+from torchvision.transforms import ToTensor, Normalize, Compose
+import torch
 
+import tifffile as tiff
+import cv2
+import random
+from pathlib import Path
+import os
+from data_new import DatasetFactory
+from losses import bce_dice_loss
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
+from torch.nn import functional as F
+from models.ternausnet2 import TernausNetV2
+
+# %%
+random.seed(42)
+NUCLEI_PALETTE = ImagePalette.random()
+random.seed()
+
+# %%
+rcParams['figure.figsize'] = 15, 15
+
+# %%
+from models.ternausnet2 import TernausNetV2
+
+# %%
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch Super Res Example')
 parser.add_argument('--upscale_factor', type=int, required=True, help="super resolution upscale factor")
@@ -30,36 +55,73 @@ if opt.cuda and not torch.cuda.is_available():
 torch.manual_seed(opt.seed)
 
 device = torch.device("cuda" if opt.cuda else "cpu")
+IMAGE_DIR = "/projects/asm/data/m2l/crops"
 
-data_gen = DatasetFactory(opt.upscale_factor, 256)
 
-print('===> Loading datasets')
-train_set = data_gen.get_training_set()
-test_set = data_gen.get_test_set()
-training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
-testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
+# %%
+def get_model(model_path):
+    model = TernausNetV2(opt.batchSize,  num_classes=2)
+    # state = torch.load('weights/deepglobe_buildings.pt')
 
-print('===> Building model')
-model = Net(upscale_factor=opt.upscale_factor).to(device)
-criterion = nn.MSELoss()
+    # state = {key.replace('module.', '').replace('bn.', ''): value for key, value in state['model'].items()}
+    # model.eval()
+    # model.load_state_dict(state) # changed the dimensions
 
-optimizer = optim.Adam(model.parameters(), lr=opt.lr)
+    if torch.cuda.is_available():
+        model.cuda()
+    return model
+
+
+# %%
+def unpad(img, pads):
+    """
+    img: numpy array of the shape (height, width)
+    pads: (x_min_pad, y_min_pad, x_max_pad, y_max_pad)
+    @return padded image
+    """
+    (x_min_pad, y_min_pad, x_max_pad, y_max_pad) = pads
+    height, width = img.shape[:2]
+
+    return img[y_min_pad:height - y_max_pad, x_min_pad:width - x_max_pad]
+
+
+# %%
+def label_watershed(before, after, component_size=20):
+    markers = ndimage.label(after)[0]
+
+    labels = watershed(-before, markers, mask=before, connectivity=8)
+    unique, counts = np.unique(labels, return_counts=True)
+
+    for (k, v) in dict(zip(unique, counts)).items():
+        if v < component_size:
+            labels[labels == k] = 0
+    return labels
+
+
+# %%
+model = get_model('weights/deepglobe_buildings.pt')
+
+# %%
+criterion = bce_dice_loss()
+
+optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
 
 
 def train(epoch):
     epoch_loss = 0
     for iteration, batch in enumerate(training_data_loader, 1):
-        input, target = batch[0].to(device), batch[1].to(device)
+        batch = [b.to(device) for b in batch]
+        input, target1, target2 = batch
 
         optimizer.zero_grad()
-        loss = criterion(model(input), target)
+        loss = criterion(model(input), target1)
         epoch_loss += loss.item()
         loss.backward()
         optimizer.step()
 
-        print("===> Epoch[{}]({}/{}): Loss: {:.4f}".format(epoch, iteration, len(training_data_loader), loss.item()))
+        print(f"===> Epoch[{epoch}]({iteration}/{len(training_data_loader)}): Loss: {loss.item():.4f}")
 
-    print("===> Epoch {} Complete: Avg. Loss: {:.4f}".format(epoch, epoch_loss / len(training_data_loader)))
+    print(f"===> Epoch {epoch} Complete: Avg. Loss: {epoch_loss / len(training_data_loader):.4f}")
 
 
 def runtest():
@@ -72,15 +134,61 @@ def runtest():
             mse = criterion(prediction, target)
             psnr = 10 * log10(1 / mse.item())
             avg_psnr += psnr
-    print("===> Avg. PSNR: {:.4f} dB".format(avg_psnr / len(testing_data_loader)))
+    print(f"===> Avg. PSNR: {avg_psnr / len(testing_data_loader):.4f} dB")
 
 
 def checkpoint(epoch):
-    model_out_path = "model_epoch_{}.pth".format(epoch)
+    model_out_path = f"model_epoch_{epoch}.pth"
     torch.save(model, model_out_path)
-    print("Checkpoint saved to {}".format(model_out_path))
+    print(f"Checkpoint saved to {model_out_path}")
+
+
+print('===> Loading datasets')
+data_gen = DatasetFactory(opt.upscale_factor, 256, IMAGE_DIR)
+train_set = data_gen.get_training_set()
+test_set = data_gen.get_test_set()
+
+training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
+testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
 
 for epoch in range(1, opt.nEpochs + 1):
     train(epoch)
     runtest()
     checkpoint(epoch)
+
+# %%
+img_transform = Compose([
+    ToTensor(),
+    # Normalize(mean=[0.485, 0.456, 0.406, 0, 0, 0, 0, 0, 0, 0, 0], std=[0.229, 0.224, 0.225, 1, 1, 1, 1, 1, 1, 1, 1])
+])
+
+# %%
+prediction = torch.sigmoid(model(input_img)).data[0].cpu().numpy()
+
+# %%
+# First predicted layer - mask
+# Second predicted layer - touching areas
+prediction.shape
+
+# %%
+# left mask, right touching areas
+imshow(np.hstack([prediction[0], prediction[1]]))
+
+# %%
+mask = (prediction[0] > 0.5).astype(np.uint8)
+contour = (prediction[1])
+
+seed = ((mask * (1 - contour)) > 0.5).astype(np.uint8)
+
+# %%
+labels = label_watershed(mask, seed)
+
+# %%
+labels = unpad(labels, pads)
+
+# %%
+im = Image.fromarray(labels.astype(np.uint8), mode='P')
+im.putpalette(NUCLEI_PALETTE)
+
+# %%
+im

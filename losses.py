@@ -6,6 +6,23 @@ import torch
 from torch.nn import functional as F
 
 
+def dice_coef_loss(y_true, y_pred):
+    return 1.0 - dice_coef(y_true, y_pred)
+
+
+def dice_coef(y_true, y_pred):
+    smooth = 1.0
+    y_true_f = y_true.view(-1)
+    y_pred_f = y_pred.view(-1)
+    intersection = F.sum(y_true_f, y_pred_f)
+    return (2.0 * intersection + smooth) / (F.sum(y_true_f) + F.sum(y_pred_f) + smooth)
+
+
+def bce_dice_loss(bce=0.5, dice=0.5):
+    def bce_dice(y_true, y_pred):
+        return F.binary_cross_entropy(y_true, y_pred) * bce + dice_coef_loss(y_true, y_pred) * dice
+
+
 def bce_loss(true, logits, pos_weight=None):
     """Computes the weighted binary cross-entropy loss.
 
