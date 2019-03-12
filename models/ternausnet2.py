@@ -83,7 +83,7 @@ class TernausNetV2(nn.Module):
         encoder = WiderResNet(structure=[3, 3, 6, 3, 1, 1], classes=1000, norm_act=norm_act)
 
         self.conv1 = Sequential(
-            OrderedDict([('conv1', nn.Conv2d(num_input_channels, batch_size, 3, padding=1, bias=False))]))
+            OrderedDict([('conv1', nn.Conv2d(num_input_channels, 64, 3, padding=1, bias=False))]))
         self.conv2 = encoder.mod2
         self.conv3 = encoder.mod3
         self.conv4 = encoder.mod4

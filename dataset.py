@@ -7,7 +7,7 @@ import cv2
 from PIL import Image
 
 
-IMAGE_SIZE = 704
+IMAGE_SIZE = 256
 IMAGE_DIM = (IMAGE_SIZE, IMAGE_SIZE)
 
 

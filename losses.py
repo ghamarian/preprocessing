@@ -1,6 +1,6 @@
 """Common image segmentation losses.
 """
-
+import pdb
 import torch
 
 from torch.nn import functional as F
@@ -12,15 +12,21 @@ def dice_coef_loss(y_true, y_pred):
 
 def dice_coef(y_true, y_pred):
     smooth = 1.0
-    y_true_f = y_true.view(-1)
-    y_pred_f = y_pred.view(-1)
-    intersection = F.sum(y_true_f, y_pred_f)
-    return (2.0 * intersection + smooth) / (F.sum(y_true_f) + F.sum(y_pred_f) + smooth)
+    y_true_f = y_true.view(1, -1).squeeze()
+    y_pred_f = y_pred.contiguous().view(1, -1).squeeze()
+    intersection = torch.sum(y_true_f * y_pred_f)
+    return (2.0 * intersection + smooth) / (torch.sum(y_true_f) + torch.sum(y_pred_f) + smooth)
 
 
 def bce_dice_loss(bce=0.5, dice=0.5):
-    def bce_dice(y_true, y_pred):
-        return F.binary_cross_entropy(y_true, y_pred) * bce + dice_coef_loss(y_true, y_pred) * dice
+    def bce_dice(mask1, mask2, y_pred):
+        y_pred_1 = y_pred[:, 0, :, :]
+        y_pred_2 = y_pred[:, 1, :, :]
+
+        first = F.binary_cross_entropy(y_pred_1, mask1) * bce + dice_coef_loss(mask1, y_pred_1) * dice
+        second = F.binary_cross_entropy(y_pred_2, mask2) * bce + dice_coef_loss(mask2, y_pred_2) * dice
+        return first + second
+    return bce_dice
 
 
 def bce_loss(true, logits, pos_weight=None):

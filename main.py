@@ -4,6 +4,8 @@ from skimage.morphology import watershed
 import scipy.ndimage as ndimage
 from PIL import Image, ImagePalette
 import argparse
+import pdb
+
 
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Normalize, Compose
@@ -18,7 +20,7 @@ from data_new import DatasetFactory
 from losses import bce_dice_loss
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 from torch.nn import functional as F
 from models.ternausnet2 import TernausNetV2
@@ -43,7 +45,7 @@ parser.add_argument('--testBatchSize', type=int, default=10, help='testing batch
 parser.add_argument('--nEpochs', type=int, default=2, help='number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.01, help='Learning Rate. Default=0.01')
 parser.add_argument('--cuda', action='store_true', help='use cuda?')
-parser.add_argument('--threads', type=int, default=4, help='number of threads for data loader to use')
+parser.add_argument('--threads', type=int, default=1, help='number of threads for data loader to use')
 parser.add_argument('--seed', type=int, default=123, help='random seed to use. Default=123')
 opt = parser.parse_args()
 
@@ -114,7 +116,9 @@ def train(epoch):
         input, target1, target2 = batch
 
         optimizer.zero_grad()
-        loss = criterion(model(input), target1)
+
+        y_pred = torch.sigmoid(model(input)).data
+        loss = criterion(target1, target2, y_pred)
         epoch_loss += loss.item()
         loss.backward()
         optimizer.step()
@@ -149,7 +153,7 @@ train_set = data_gen.get_training_set()
 test_set = data_gen.get_test_set()
 
 training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
-testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
+# testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
 
 for epoch in range(1, opt.nEpochs + 1):
     train(epoch)
