@@ -61,13 +61,8 @@ IMAGE_DIR = "/projects/asm/data/m2l/crops"
 
 
 # %%
-def get_model(model_path):
-    model = TernausNetV2(opt.batchSize,  num_classes=2)
-    # state = torch.load('weights/deepglobe_buildings.pt')
-
-    # state = {key.replace('module.', '').replace('bn.', ''): value for key, value in state['model'].items()}
-    # model.eval()
-    # model.load_state_dict(state) # changed the dimensions
+def get_model():
+    model = TernausNetV2(opt.batchSize, num_classes=2)
 
     if torch.cuda.is_available():
         model.cuda()
@@ -101,24 +96,15 @@ def label_watershed(before, after, component_size=20):
 
 
 # %%
-model = get_model('weights/deepglobe_buildings.pt')
-
-# %%
-criterion = bce_dice_loss()
-
-optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
-
-
 def train(epoch):
     epoch_loss = 0
     for iteration, batch in enumerate(training_data_loader, 1):
         batch = [b.to(device) for b in batch]
-        input, target1, target2 = batch
-        # input = Variable(input, requires_grad=True)
+        input_img, target1, target2 = batch
 
         optimizer.zero_grad()
 
-        y_pred = torch.sigmoid(model(input))
+        y_pred = torch.sigmoid(model(input_img))
         loss = criterion(target1, target2, y_pred)
         epoch_loss += loss.item()
         loss.backward()
@@ -133,11 +119,12 @@ def runtest():
     avg_psnr = 0
     with torch.no_grad():
         for batch in testing_data_loader:
-            input, target = batch[0].to(device), batch[1].to(device)
+            batch = [b.to(device) for b in batch]
+            input_img, target1, target2 = batch
 
-            prediction = model(input)
-            mse = criterion(prediction, target)
-            psnr = 10 * log10(1 / mse.item())
+            prediction = torch.sigmoid(model(input_img))
+            loss = criterion(target1, target2, prediction)
+            psnr = 10 * log10(1 / loss.item())
             avg_psnr += psnr
     print(f"===> Avg. PSNR: {avg_psnr / len(testing_data_loader):.4f} dB")
 
@@ -148,16 +135,24 @@ def checkpoint(epoch):
     print(f"Checkpoint saved to {model_out_path}")
 
 
-print('===> Loading datasets')
-data_gen = DatasetFactory(opt.upscale_factor, 256, IMAGE_DIR)
-train_set = data_gen.get_training_set()
-test_set = data_gen.get_test_set()
+if __name__ == '__main__':
 
-training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
-testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize, shuffle=False)
+    print('===> Creating the model')
+    model = get_model()
+    criterion = bce_dice_loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=opt.lr)
 
-for epoch in range(1, opt.nEpochs + 1):
-    train(epoch)
-    runtest()
-    checkpoint(epoch)
+    print('===> Loading datasets')
+    data_gen = DatasetFactory(opt.upscale_factor, 256, IMAGE_DIR)
+    train_set = data_gen.get_training_set()
+    test_set = data_gen.get_test_set()
 
+    training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize,
+                                      shuffle=True)
+    testing_data_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testBatchSize,
+                                     shuffle=False)
+
+    for epoch in range(1, opt.nEpochs + 1):
+        train(epoch)
+        runtest()
+        checkpoint(epoch)

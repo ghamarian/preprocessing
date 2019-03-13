@@ -1,4 +1,6 @@
-from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize, Normalize
+import torch
+
+from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize, Normalize, Lambda
 
 from dataset import DatasetFromFolder
 
@@ -17,16 +19,11 @@ class DatasetFactory:
 
     def input_transform(self, crop_size):
         return Compose([
-            # CenterCrop(crop_size),
-            # Resize(crop_size // self.upscale_factor),
-            # Normalize(),
             ToTensor(),
         ])
 
     def target_transform(self, crop_size):
         return Compose([
-            # CenterCrop(crop_size),
-            # Normalize(),
             ToTensor(),
         ])
 

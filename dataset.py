@@ -6,13 +6,14 @@ import numpy as np
 import cv2
 from PIL import Image
 
-
 IMAGE_SIZE = 256
 IMAGE_DIM = (IMAGE_SIZE, IMAGE_SIZE)
 
 
 def is_image_file(filename):
-    return any(filename.endswith(extension) for extension in [".png", ".jpg", ".bmp", ".jpeg"])
+    return any(
+        filename.endswith(extension) for extension in [".png", ".jpg", ".bmp", ".jpeg"]) \
+           and not filename.startswith(".")
 
 
 def is_not_mask(filename):
@@ -62,7 +63,6 @@ def load_img(file_name_rgb):
     # input_img = torch.unsqueeze(img_transform(img / (2 ** 8 - 1)).cuda(), dim=0)
     # return np.concatenate([rgb, tf], axis=2) * (2 ** 8 - 1)
     return im.resize(IMAGE_DIM)
-
 
 
 def minmax(img):
