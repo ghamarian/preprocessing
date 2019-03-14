@@ -20,7 +20,7 @@ from data_new import DatasetFactory
 from losses import bce_dice_loss
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 from torch.nn import functional as F
 from models.ternausnet2 import TernausNetV2
@@ -115,8 +115,17 @@ def train(epoch):
     print(f"===> Epoch {epoch} Complete: Avg. Loss: {epoch_loss / len(training_data_loader):.4f}")
 
 
+def dice_score(target1, target2, prediction):
+    y_true_f = target1.view(1, -1).squeeze()
+    prediction = (prediction > 0.5).int()
+    y_pred_f = prediction.contiguous().view(1, -1).squeeze()
+    intersection = torch.sum(y_true_f * y_pred_f)
+    return (2.0 * intersection) / (torch.sum(y_true_f) + torch.sum(y_pred_f))
+
+
 def runtest():
     avg_psnr = 0
+    dice = 0
     with torch.no_grad():
         for batch in testing_data_loader:
             batch = [b.to(device) for b in batch]
@@ -124,9 +133,10 @@ def runtest():
 
             prediction = torch.sigmoid(model(input_img))
             loss = criterion(target1, target2, prediction)
-            psnr = 10 * log10(1 / loss.item())
-            avg_psnr += psnr
-    print(f"===> Avg. PSNR: {avg_psnr / len(testing_data_loader):.4f} dB")
+            dice += dice_score(target1, target2, prediction)
+            avg_psnr += loss.item()
+    print(f"===> Avg. loss: {avg_psnr / len(testing_data_loader):.4f} dB")
+    print(f"===> Avg. dice: {dice / len(testing_data_loader):.4f} dB")
 
 
 def checkpoint(epoch):
